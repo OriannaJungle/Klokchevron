@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Klokkijken</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E6F0FF; --surface:#FFFFFF; --ink:#14264D; --muted:#51618A; --line:#C9D8F2;
+  --chip:#D5E3FB; --chip-on:#14264D; --chip-on-ink:#FFFFFF;
+  --ok:#167A40; --bad:#B3261E; --focus:#2456D6;
+  /* de klok zelf is een voorwerp: in elk thema hetzelfde */
+  --rim:#FFC629; --rim-edge:#E0A200; --face:#FFFFFF; --face-ink:#14264D; --face-muted:#8C9BBE;
+  --hour:#2456D6; --minute:#D9550F; --minute-num:#B8420A;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1730; --surface:#182548; --ink:#EAF0FF; --muted:#A7B4D6; --line:#2C3B69;
+    --chip:#243562; --chip-on:#FFC629; --chip-on-ink:#14264D;
+    --ok:#6EDC9A; --bad:#FF9A92; --focus:#FFC629;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1730; --surface:#182548; --ink:#EAF0FF; --muted:#A7B4D6; --line:#2C3B69;
+  --chip:#243562; --chip-on:#FFC629; --chip-on-ink:#14264D;
+  --ok:#6EDC9A; --bad:#FF9A92; --focus:#FFC629;
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Fredoka",ui-rounded,"Arial Rounded MT Bold","Nunito","Segoe UI",system-ui,sans-serif;
+  font-size:17px; line-height:1.4; min-height:100vh;
+}
+:focus-visible{outline:3px solid var(--focus); outline-offset:3px}
+.app{max-width:1000px; margin:0 auto; padding:16px 16px 48px}
+
+header{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px}
+h1{margin:0; font-size:clamp(1.7rem,5.5vw,2.3rem); font-weight:700; letter-spacing:.01em}
+.stars{
+  display:flex; align-items:center; gap:6px; background:var(--surface);
+  border-radius:999px; padding:6px 16px 6px 10px; font-weight:600; font-size:1.2rem;
+  font-variant-numeric:tabular-nums;
+}
+.stars svg{width:26px; height:26px; fill:var(--rim); stroke:var(--rim-edge); stroke-width:1.5; stroke-linejoin:round}
+.stars.pop{animation:pop .5s ease-out}
+
+.tabs{display:grid; grid-template-columns:repeat(2,1fr); gap:4px; background:var(--chip); padding:5px; border-radius:28px; margin-bottom:22px}
+@media (min-width:640px){.tabs{grid-template-columns:repeat(4,1fr); border-radius:999px}}
+.tab{
+  flex:1; border:0; background:transparent; color:var(--ink); font:inherit; font-weight:600;
+  padding:10px 6px; min-height:48px; border-radius:999px; cursor:pointer;
+  font-size:clamp(.88rem,3.5vw,1.05rem);
+}
+.tab[aria-selected="true"]{background:var(--ink); color:var(--bg)}
+
+.stage{display:grid; gap:24px}
+@media (min-width:860px){
+  .stage{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); align-items:start; gap:36px}
+}
+
+/* ---------- klok ---------- */
+.clock-col{text-align:center}
+#clock{
+  width:100%; max-width:460px; display:block; margin:0 auto; border-radius:50%;
+  touch-action:none; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;
+  cursor:grab;
+}
+#clock.locked{cursor:default}
+#clock.dragging{cursor:grabbing}
+#clock.cheer{animation:cheer .6s ease-out}
+.rim{fill:var(--rim); stroke:var(--rim-edge); stroke-width:3}
+.face{fill:var(--face)}
+.tick{stroke:var(--face-muted); stroke-width:2; stroke-linecap:round}
+.tick.major{stroke:var(--face-ink); stroke-width:4}
+.hnum{fill:var(--face-ink); font-size:36px; font-weight:700; text-anchor:middle; dominant-baseline:central}
+.mnum{fill:var(--minute-num); font-size:15px; font-weight:600; text-anchor:middle; dominant-baseline:central}
+#clock.hide-min .min-nums{display:none}
+.hand line{stroke-linecap:round}
+.hand .halo{stroke:var(--face); opacity:.9}
+.hand.hour .halo{stroke-width:22}
+.hand.hour .core{stroke:var(--hour); stroke-width:14}
+.hand.minute .halo{stroke-width:16}
+.hand.minute .core{stroke:var(--minute); stroke-width:9}
+.hand.active .halo{stroke:var(--rim); opacity:1}
+.cap{fill:var(--face-ink)}
+.cap2{fill:var(--face)}
+.hint{margin:12px 0 0; color:var(--muted); font-size:.98rem}
+
+/* ---------- paneel ---------- */
+.panel-col{background:var(--surface); border-radius:28px; padding:22px}
+.label{margin:0; color:var(--muted); font-size:1rem}
+.words{
+  margin:2px 0 0; font-size:clamp(2rem,7vw,2.8rem); font-weight:700; line-height:1.12;
+  min-height:2.24em; text-wrap:balance;
+}
+.digital{margin:6px 0 0; font-size:1.6rem; font-weight:500; color:var(--muted); font-variant-numeric:tabular-nums}
+.actions{display:flex; flex-wrap:wrap; gap:10px; margin-top:16px}
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  font:inherit; font-weight:600; font-size:1.05rem; min-height:50px; padding:10px 24px;
+  border-radius:999px; border:2px solid var(--ink); background:var(--ink); color:var(--bg); cursor:pointer;
+}
+.btn.ghost{background:transparent; color:var(--ink); border-color:var(--line)}
+.feedback{margin:14px 0 0; min-height:3.2em; font-weight:500}
+.feedback.ok{color:var(--ok)}
+.feedback.bad{color:var(--bad)}
+
+.levels{margin-bottom:20px}
+.levels .label{margin-bottom:8px}
+.chips{display:flex; flex-wrap:wrap; gap:8px}
+.chip{
+  font:inherit; font-weight:500; border:0; background:var(--chip); color:var(--ink);
+  border-radius:999px; padding:9px 16px; min-height:44px; cursor:pointer;
+}
+.chip[aria-pressed="true"]{background:var(--chip-on); color:var(--chip-on-ink); font-weight:600}
+
+.answers{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px}
+.answer{
+  font:inherit; font-size:clamp(1.5rem,6vw,2rem); font-weight:600; font-variant-numeric:tabular-nums;
+  min-height:72px; padding:14px 6px; border-radius:20px; border:3px solid var(--line);
+  background:transparent; color:var(--ink); cursor:pointer;
+}
+.answer.wrong{border-color:var(--bad); color:var(--bad); text-decoration:line-through; opacity:.75; cursor:default}
+.answer.right{border-color:var(--ok); color:var(--ok); cursor:default}
+
+.help{margin-top:24px; padding-top:18px; border-top:2px dashed var(--line); display:grid; gap:6px}
+.legend{list-style:none; margin:0 0 8px; padding:0; display:grid; gap:8px}
+.legend li{display:flex; align-items:center; gap:12px}
+.swatch{display:inline-block; border-radius:99px; flex:none}
+.swatch.hour{width:30px; height:14px; background:var(--hour)}
+.swatch.minute{width:52px; height:9px; background:var(--minute)}
+.legend span.t{flex:1}
+.opt{display:flex; align-items:center; gap:12px; min-height:44px; cursor:pointer}
+.opt input{width:22px; height:22px; accent-color:var(--hour); flex:none}
+
+.wedge{display:none}
+#clock.show-wedge .wedge{display:inline}
+.wedge.past{fill:var(--minute); opacity:.28}
+.wedge.rest{fill:var(--face-ink); opacity:.1}
+
+.note{margin:14px 0 0; padding:10px 14px; border-left:5px solid var(--minute); background:var(--chip); border-radius:0 14px 14px 0; font-size:.98rem}
+.exblock{margin-top:20px; padding-top:16px; border-top:2px dashed var(--line)}
+.seg{display:inline-flex; background:var(--chip); border-radius:999px; padding:4px; gap:4px}
+.segbtn{font:inherit; font-weight:600; border:0; background:transparent; color:var(--ink); border-radius:999px; padding:8px 20px; min-height:44px; cursor:pointer}
+.segbtn[aria-pressed="true"]{background:var(--ink); color:var(--bg)}
+.line24{margin:12px 0 0; display:flex; align-items:baseline; gap:12px; flex-wrap:wrap}
+.line24 .k{color:var(--muted)}
+.line24 .v{font-size:1.8rem; font-weight:600; font-variant-numeric:tabular-nums}
+.conv{margin:4px 0 0; color:var(--muted); font-variant-numeric:tabular-nums; min-height:1.4em}
+.mline{margin:0 0 8px; display:flex; align-items:center; gap:12px}
+.sw{width:22px; height:22px; border-radius:6px; flex:none}
+.sw.past{background:#F7C9B0; box-shadow:inset 0 0 0 2px var(--minute)}
+.sw.rest{background:#DDE3F0; box-shadow:inset 0 0 0 2px var(--muted)}
+.msum{margin:8px 0 0; font-size:1.6rem; font-weight:600; font-variant-numeric:tabular-nums}
+.calc-label{margin-top:18px}
+.calc-big{min-height:0}
+
+@keyframes cheer{
+  0%{transform:scale(1)} 40%{transform:scale(1.035) rotate(-1.5deg)}
+  70%{transform:scale(1.02) rotate(1deg)} 100%{transform:scale(1)}
+}
+@keyframes pop{0%{transform:scale(1)} 40%{transform:scale(1.18)} 100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important; transition:none !important}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Klokkijken</h1>
+    <div class="stars" id="stars" role="status" aria-label="Verdiende sterren">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="12 2 15.1 8.6 22 9.3 16.8 14 18.2 21 12 17.5 5.8 21 7.2 14 2 9.3 8.9 8.6"/></svg>
+      <span id="starCount">0</span>
+    </div>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="Kies wat je wilt doen">
+    <button class="tab" role="tab" data-mode="explore" aria-selected="true">Verkennen</button>
+    <button class="tab" role="tab" data-mode="set" aria-selected="false">Zet de klok</button>
+    <button class="tab" role="tab" data-mode="read" aria-selected="false">Lees de klok</button>
+    <button class="tab" role="tab" data-mode="calc" aria-selected="false">Rekenen</button>
+  </div>
+
+  <div class="stage">
+    <div class="clock-col">
+      <svg id="clock" viewBox="0 0 400 400" role="img" aria-label="Klok" tabindex="0">
+        <circle class="rim" cx="200" cy="200" r="194"/>
+        <circle class="face" cx="200" cy="200" r="176"/>
+        <path id="wedgeRest" class="wedge rest" d=""/>
+        <path id="wedgeAt" class="wedge past" d=""/>
+        <g id="ticks"></g>
+        <g id="minNums" class="min-nums"></g>
+        <g id="hourNums"></g>
+        <g id="hourHand" class="hand hour">
+          <line class="halo" x1="200" y1="214" x2="200" y2="132"/>
+          <line class="core" x1="200" y1="214" x2="200" y2="132"/>
+        </g>
+        <g id="minHand" class="hand minute">
+          <line class="halo" x1="200" y1="222" x2="200" y2="72"/>
+          <line class="core" x1="200" y1="222" x2="200" y2="72"/>
+        </g>
+        <circle class="cap" cx="200" cy="200" r="13"/>
+        <circle class="cap2" cx="200" cy="200" r="5"/>
+      </svg>
+      <p class="hint" id="hint"></p>
+    </div>
+
+    <div class="panel-col">
+      <div class="levels" id="levels" hidden>
+        <p class="label">Wat wil je oefenen?</p>
+        <div class="chips" id="chips">
+          <button class="chip" data-level="uur" aria-pressed="true">Hele uren</button>
+          <button class="chip" data-level="half" aria-pressed="false">Halve uren</button>
+          <button class="chip" data-level="kwartier" aria-pressed="false">Kwartieren</button>
+          <button class="chip" data-level="vijf" aria-pressed="false">Vijf minuten</button>
+        </div>
+      </div>
+
+      <!-- Verkennen -->
+      <section id="panel-explore" role="tabpanel">
+        <p class="label">Het is</p>
+        <p class="words" id="exWords"></p>
+        <p class="digital" id="exDigital"></p>
+        <p class="note" id="exNote" hidden></p>
+        <div class="actions">
+          <button class="btn ghost speak" type="button">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+            Lees voor
+          </button>
+        </div>
+
+        <div class="exblock">
+          <div class="seg" role="group" aria-label="Deel van de dag">
+            <button type="button" class="segbtn" id="amBtn" aria-pressed="true">Ochtend</button>
+            <button type="button" class="segbtn" id="pmBtn" aria-pressed="false">Middag</button>
+          </div>
+          <p class="line24"><span class="k">24-uurs klok</span><span class="v" id="ex24"></span></p>
+          <p class="conv" id="exConv"></p>
+        </div>
+
+        <div class="exblock" id="minBlock">
+          <p class="mline"><span class="sw past"></span><span id="exPast"></span></p>
+          <p class="mline"><span class="sw rest"></span><span id="exLeft"></span></p>
+          <p class="msum" id="exSum"></p>
+        </div>
+      </section>
+
+      <!-- Zet de klok -->
+      <section id="panel-set" role="tabpanel" hidden>
+        <p class="label">Zet de klok op</p>
+        <p class="words" id="setWords"></p>
+        <p class="digital" id="setDigital"></p>
+        <div class="actions">
+          <button class="btn" id="setCheck" type="button">Controleer</button>
+          <button class="btn ghost" id="setSkip" type="button">Andere tijd</button>
+        </div>
+        <p class="feedback" id="setFb" role="status"></p>
+      </section>
+
+      <!-- Lees de klok -->
+      <section id="panel-read" role="tabpanel" hidden>
+        <p class="label">Hoe laat is het?</p>
+        <div class="answers" id="answers"></div>
+        <p class="feedback" id="readFb" role="status"></p>
+        <div class="actions">
+          <button class="btn" id="readNext" type="button" hidden>Volgende</button>
+          <button class="btn ghost speak" id="readSpeak" type="button" hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+            Lees voor
+          </button>
+        </div>
+      </section>
+
+      <!-- Rekenen -->
+      <section id="panel-calc" role="tabpanel" hidden>
+        <div class="chips" id="calcTypes">
+          <button class="chip" data-calc="h24" aria-pressed="true">24-uurs klok</button>
+          <button class="chip" data-calc="min" aria-pressed="false">Minuten tot het uur</button>
+        </div>
+        <p class="label calc-label" id="calcLabel"></p>
+        <p class="words calc-big" id="calcQ"></p>
+        <div class="answers" id="calcAnswers"></div>
+        <p class="feedback" id="calcFb" role="status"></p>
+        <div class="actions">
+          <button class="btn" id="calcNext" type="button" hidden>Volgende</button>
+        </div>
+      </section>
+
+      <div class="help">
+        <ul class="legend">
+          <li><span class="swatch hour"></span><span class="t">De korte wijzer wijst de uren aan</span></li>
+          <li><span class="swatch minute"></span><span class="t">De lange wijzer wijst de minuten aan</span></li>
+        </ul>
+        <label class="opt"><input type="checkbox" id="optMin" checked> Cijfers voor de minuten</label>
+        <label class="opt" id="optSnapWrap"><input type="checkbox" id="optSnap" checked> Minuten per vijf</label>
+        <label class="opt" id="optWedgeWrap"><input type="checkbox" id="optWedge" checked> Kleur de minuten op de klok</label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- Nederlandse tijdsaanduiding ---------- */
+  var NUM = ['nul','een','twee','drie','vier','vijf','zes','zeven','acht','negen','tien','elf','twaalf',
+    'dertien','veertien','vijftien','zestien','zeventien','achttien','negentien','twintig',
+    'eenentwintig','tweeëntwintig','drieëntwintig','vierentwintig','vijfentwintig','zesentwintig',
+    'zevenentwintig','achtentwintig','negenentwintig'];
+  function mod(n, m) { return ((n % m) + m) % m; }
+  function hw(n) { return NUM[mod(n - 1, 12) + 1]; }           // uurwoord, 1..12
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  function timeWords(hour, minute) {
+    var h = hour === 0 ? 12 : hour;
+    var fixed = {
+      0: hw(h) + ' uur',
+      5: 'vijf over ' + hw(h),
+      10: 'tien over ' + hw(h),
+      15: 'kwart over ' + hw(h),
+      20: 'tien voor half ' + hw(h + 1),
+      25: 'vijf voor half ' + hw(h + 1),
+      30: 'half ' + hw(h + 1),
+      35: 'vijf over half ' + hw(h + 1),
+      40: 'tien over half ' + hw(h + 1),
+      45: 'kwart voor ' + hw(h + 1),
+      50: 'tien voor ' + hw(h + 1),
+      55: 'vijf voor ' + hw(h + 1)
+    };
+    if (fixed[minute]) return fixed[minute];
+    function unit(n) { return NUM[n] + (n === 1 ? ' minuut' : ' minuten'); }
+    return minute < 30 ? unit(minute) + ' over ' + hw(h) : unit(60 - minute) + ' voor ' + hw(h + 1);
+  }
+  function digital(hour, minute) {
+    return (hour === 0 ? 12 : hour) + ':' + (minute < 10 ? '0' : '') + minute;
+  }
+
+  /* ---------- toestand ---------- */
+  var LEVELS = {
+    uur: [0],
+    half: [0, 30],
+    kwartier: [0, 15, 30, 45],
+    vijf: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
+  };
+  var state = {
+    mode: 'explore', hour: 3, minute: 0, snap: true, level: 'uur',
+    stars: 0, target: null, attempts: 0, phase: 'asking', busy: false, pm: false
+  };
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var canSpeak = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+
+  /* ---------- klok tekenen ---------- */
+  var NS = 'http://www.w3.org/2000/svg';
+  var svg = document.getElementById('clock');
+  function mk(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function polar(r, deg) {
+    var a = deg * Math.PI / 180;
+    return [200 + r * Math.sin(a), 200 - r * Math.cos(a)];
+  }
+  (function drawFace() {
+    var ticks = document.getElementById('ticks');
+    var i, p1, p2, t;
+    for (i = 0; i < 60; i++) {
+      var major = i % 5 === 0;
+      p1 = polar(major ? 155 : 162, i * 6);
+      p2 = polar(172, i * 6);
+      mk('line', { x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1], 'class': 'tick' + (major ? ' major' : '') }, ticks);
+    }
+    var mn = document.getElementById('minNums'), hn = document.getElementById('hourNums');
+    for (i = 1; i <= 12; i++) {
+      p1 = polar(146, i * 30);
+      t = mk('text', { x: p1[0], y: p1[1], 'class': 'mnum' }, mn);
+      t.textContent = i === 12 ? '0' : String(i * 5);
+      p2 = polar(103, i * 30);
+      t = mk('text', { x: p2[0], y: p2[1], 'class': 'hnum' }, hn);
+      t.textContent = String(i);
+    }
+  })();
+
+  var hourG = document.getElementById('hourHand');
+  var minG = document.getElementById('minHand');
+  var cur = state.hour * 60 + state.minute;   // getoonde tijd in minuten (mag tijdens animatie tussenwaarden hebben)
+  var raf = 0;
+
+  var wedgeAt = document.getElementById('wedgeAt'), wedgeRest = document.getElementById('wedgeRest');
+  function sectorPath(a0, a1, R) {
+    var span = a1 - a0;
+    if (span < 0.05) return '';
+    if (span >= 359.95) {
+      return 'M200 ' + (200 - R) + ' A' + R + ' ' + R + ' 0 1 1 200 ' + (200 + R) + ' A' + R + ' ' + R + ' 0 1 1 200 ' + (200 - R) + ' Z';
+    }
+    var p0 = polar(R, a0), p1 = polar(R, a1);
+    return 'M200 200 L' + p0[0] + ' ' + p0[1] + ' A' + R + ' ' + R + ' 0 ' + (span > 180 ? 1 : 0) + ' 1 ' + p1[0] + ' ' + p1[1] + ' Z';
+  }
+  function render() {
+    hourG.setAttribute('transform', 'rotate(' + mod(cur * 0.5, 360) + ' 200 200)');
+    minG.setAttribute('transform', 'rotate(' + mod(cur * 6, 360) + ' 200 200)');
+    var a = mod(cur * 6, 360);
+    wedgeAt.setAttribute('d', sectorPath(0, a, 172));
+    wedgeRest.setAttribute('d', sectorPath(a, 360, 172));
+  }
+
+  function goTo(h, m, animate) {
+    cancelAnimationFrame(raf);
+    var target = h * 60 + m;
+    var delta = mod(target - cur, 720);
+    if (delta > 360) delta -= 720;
+    state.hour = h; state.minute = m;
+    if (!animate || reduceMotion || Math.abs(delta) < 1) {
+      cur = target; state.busy = false; render(); afterMove(); return;
+    }
+    var from = cur, t0 = performance.now(), dur = 650;
+    state.busy = true;
+    function step(now) {
+      var p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      cur = from + delta * e; render();
+      if (p < 1) { raf = requestAnimationFrame(step); }
+      else { cur = target; state.busy = false; render(); }
+    }
+    raf = requestAnimationFrame(step);
+    afterMove();
+  }
+
+  var exWords = document.getElementById('exWords');
+  var exDigital = document.getElementById('exDigital');
+  var exNote = document.getElementById('exNote');
+  var ex24 = document.getElementById('ex24'), exConv = document.getElementById('exConv');
+  var exPast = document.getElementById('exPast'), exLeft = document.getElementById('exLeft'), exSum = document.getElementById('exSum');
+  var amBtn = document.getElementById('amBtn'), pmBtn = document.getElementById('pmBtn');
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function fmt24(h24, m) { return pad2(h24) + ':' + pad2(m); }
+  function mins(n) { return n === 1 ? '1 minuut' : n + ' minuten'; }
+
+  function updateExplore() {
+    var h = state.hour, m = state.minute, h12 = h === 0 ? 12 : h;
+    var w = timeWords(h, m), d = digital(h, m);
+    exWords.textContent = cap(w);
+    exDigital.textContent = d;
+    svg.setAttribute('aria-label', 'Klok: ' + w + ', ' + d);
+
+    // uitleg bij "half"
+    if (m >= 20 && m <= 40) {
+      var nw = hw(h12 + 1);
+      exNote.hidden = false;
+      exNote.textContent = 'Let op: bij "half ' + nw + '" is het nog geen ' + nw + ' uur. De korte wijzer staat nog bij de ' +
+        h12 + '. ' + cap(w) + ' is ' + d + '.';
+    } else {
+      exNote.hidden = true;
+    }
+
+    // 24-uurs klok
+    var h24 = state.pm ? (h12 === 12 ? 12 : h12 + 12) : (h12 === 12 ? 0 : h12);
+    ex24.textContent = fmt24(h24, m);
+    if (state.pm) {
+      exConv.textContent = h12 === 12 ? "12 uur 's middags is 12:00. Daarna tel je door: 13, 14, 15…"
+        : h12 + ' + 12 = ' + h24 + '   en   ' + h24 + ' − 12 = ' + h12;
+    } else {
+      exConv.textContent = h12 === 12 ? "12 uur 's nachts is 0:00 op de 24-uurs klok." : "'s Ochtends blijft het uur hetzelfde.";
+    }
+    amBtn.setAttribute('aria-pressed', state.pm ? 'false' : 'true');
+    pmBtn.setAttribute('aria-pressed', state.pm ? 'true' : 'false');
+
+    // 60 minuten in een uur
+    var nextH = h12 % 12 + 1;
+    exPast.textContent = mins(m) + ' voorbij';
+    exLeft.textContent = mins(60 - m) + ' tot ' + nextH + ' uur';
+    exSum.textContent = m + ' + ' + (60 - m) + ' = 60';
+  }
+  function afterMove() {
+    if (state.mode === 'explore') updateExplore();
+  }
+
+  /* ---------- slepen ---------- */
+  var drag = null;
+  function interactive() {
+    if (state.mode === 'read' || state.mode === 'calc') return false;
+    if (state.mode === 'set' && state.phase === 'done') return false;
+    return !state.busy;
+  }
+  function effectiveSnap() { return state.mode === 'set' ? true : state.snap; }
+  function angDiff(a, b) { var d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; }
+
+  function pointerInfo(e) {
+    var pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    var p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    var dx = p.x - 200, dy = p.y - 200;
+    var a = Math.atan2(dx, -dy) * 180 / Math.PI;
+    return { angle: mod(a, 360), dist: Math.hypot(dx, dy) };
+  }
+
+  function applyDrag(angle) {
+    var h = state.hour, m = state.minute;
+    if (drag.which === 'minute') {
+      var raw = angle / 6;
+      var nm = (effectiveSnap() ? Math.round(raw / 5) * 5 : Math.round(raw)) % 60;
+      if (!drag.first) {
+        if (m >= 45 && nm <= 15) { if (h === 11) state.pm = !state.pm; h = (h + 1) % 12; }
+        else if (m <= 15 && nm >= 45) { if (h === 0) state.pm = !state.pm; h = (h + 11) % 12; }
+      }
+      m = nm;
+    } else {
+      h = mod(Math.round(angle / 30 - m / 60), 12);
+    }
+    drag.first = false;
+    goTo(h, m, false);
+  }
+
+  svg.addEventListener('pointerdown', function (e) {
+    if (!interactive()) return;
+    var p = pointerInfo(e);
+    var hAng = mod(state.hour * 30 + state.minute * 0.5, 360), mAng = state.minute * 6, which;
+    if (p.dist > 92) which = 'minute';
+    else if (p.dist < 28) which = 'hour';
+    else which = angDiff(p.angle, hAng) <= angDiff(p.angle, mAng) ? 'hour' : 'minute';
+    drag = { which: which, first: true };
+    try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+    svg.classList.add('dragging');
+    (which === 'hour' ? hourG : minG).classList.add('active');
+    applyDrag(p.angle);
+    e.preventDefault();
+  });
+  svg.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    applyDrag(pointerInfo(e).angle);
+  });
+  function endDrag() {
+    if (!drag) return;
+    drag = null;
+    svg.classList.remove('dragging');
+    hourG.classList.remove('active'); minG.classList.remove('active');
+  }
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  svg.addEventListener('keydown', function (e) {
+    if (!interactive()) return;
+    var step = effectiveSnap() ? 5 : 1;
+    var total = state.hour * 60 + state.minute;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') total += step;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') total -= step;
+    else if (e.key === 'PageUp') total += 60;
+    else if (e.key === 'PageDown') total -= 60;
+    else return;
+    e.preventDefault();
+    if (effectiveSnap()) total = Math.round(total / 5) * 5;
+    if (total >= 720 || total < 0) state.pm = !state.pm;
+    total = mod(total, 720);
+    goTo(Math.floor(total / 60), total % 60, false);
+  });
+
+  /* ---------- hulpjes ---------- */
+  function shuffle(a) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function randomTime(prev) {
+    var mins = LEVELS[state.level], t, n = 0;
+    do {
+      t = { hour: Math.floor(Math.random() * 12), minute: mins[Math.floor(Math.random() * mins.length)] };
+      n++;
+    } while (prev && t.hour === prev.hour && t.minute === prev.minute && n < 30);
+    return t;
+  }
+  function praise() { return ['Goed zo!', 'Super!', 'Top!', 'Prima gedaan!'][Math.floor(Math.random() * 4)]; }
+  function speakCurrent() {
+    if (!canSpeak) return;
+    try {
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance('Het is ' + timeWords(state.hour, state.minute));
+      u.lang = 'nl-NL'; u.rate = 0.9;
+      window.speechSynthesis.speak(u);
+    } catch (err) {}
+  }
+  var starsEl = document.getElementById('stars'), starCount = document.getElementById('starCount');
+  function win(firstTry) {
+    if (firstTry) {
+      state.stars++; starCount.textContent = state.stars;
+      starsEl.classList.remove('pop'); void starsEl.offsetWidth; starsEl.classList.add('pop');
+    }
+    svg.classList.remove('cheer'); void svg.getBoundingClientRect(); svg.classList.add('cheer');
+  }
+
+  /* ---------- Zet de klok ---------- */
+  var setWords = document.getElementById('setWords'), setDigital = document.getElementById('setDigital');
+  var setCheck = document.getElementById('setCheck'), setSkip = document.getElementById('setSkip');
+  var setFb = document.getElementById('setFb');
+  function feedback(el, kind, text) { el.className = 'feedback' + (kind ? ' ' + kind : ''); el.textContent = text; }
+
+  function newSet() {
+    state.target = randomTime(state.target);
+    state.phase = 'asking'; state.attempts = 0;
+    setWords.textContent = cap(timeWords(state.target.hour, state.target.minute));
+    setDigital.textContent = digital(state.target.hour, state.target.minute);
+    setCheck.textContent = 'Controleer';
+    feedback(setFb, '', '');
+    var startHour = (state.target.hour === 0 && state.target.minute === 0) ? 6 : 0;
+    goTo(startHour, 0, true);
+  }
+  setCheck.addEventListener('click', function () {
+    if (state.phase === 'done') { newSet(); return; }
+    var t = state.target;
+    var okH = state.hour === t.hour, okM = state.minute === t.minute;
+    if (okH && okM) {
+      win(state.attempts === 0);
+      state.phase = 'done';
+      setCheck.textContent = 'Volgende';
+      feedback(setFb, 'ok', praise() + ' Het is ' + timeWords(t.hour, t.minute) + '.');
+    } else {
+      state.attempts++;
+      var msg;
+      var nw = hw((t.hour || 12) + 1);
+      if (t.minute >= 20 && t.minute <= 40 && okM && state.hour === mod(t.hour + 1, 12)) {
+        msg = 'Kijk goed: bij "half ' + nw + '" is het nog geen ' + nw + ' uur. De korte wijzer staat nog bij de ' + (t.hour || 12) + '.';
+      }
+      else if (okH) msg = 'De korte wijzer staat goed. Kijk nog eens naar de lange wijzer.';
+      else if (okM) msg = 'De lange wijzer staat goed. Kijk nog eens naar de korte wijzer.';
+      else msg = 'Nog niet helemaal. Probeer het nog eens.';
+      feedback(setFb, 'bad', msg);
+    }
+  });
+  setSkip.addEventListener('click', newSet);
+
+  /* ---------- Lees de klok ---------- */
+  var answersEl = document.getElementById('answers');
+  var readFb = document.getElementById('readFb');
+  var readNext = document.getElementById('readNext');
+  var readSpeak = document.getElementById('readSpeak');
+
+  function distractors(t) {
+    var mins = LEVELS[state.level], pool = [], seen = {}, swapped = null;
+    seen[t.hour * 60 + t.minute] = true;
+    function cand(h, m) {
+      h = mod(h, 12); m = mod(m, 60);
+      var k = h * 60 + m;
+      if (seen[k] || mins.indexOf(m) < 0) return null;
+      seen[k] = true;
+      return { hour: h, minute: m };
+    }
+    var c;
+    if (t.minute % 5 === 0) swapped = cand(t.minute / 5, (t.hour || 12) * 5);   // korte en lange wijzer verwisseld
+    [[1, t.minute], [-1, t.minute], [2, t.minute], [-2, t.minute]].forEach(function (x) {
+      c = cand(t.hour + x[0], x[1]); if (c) pool.push(c);
+    });
+    mins.forEach(function (m) { c = cand(t.hour, m); if (c) pool.push(c); });
+    shuffle(pool);
+    var res = swapped ? [swapped, pool[0]] : pool.slice(0, 2);
+    res = res.filter(Boolean);
+    var guard = 0;
+    while (res.length < 2 && guard++ < 50) {
+      var r = randomTime();
+      c = cand(r.hour, r.minute); if (c) res.push(c);
+    }
+    return res;
+  }
+
+  function newRead() {
+    state.target = randomTime(state.target);
+    state.phase = 'asking'; state.attempts = 0;
+    var t = state.target;
+    var opts = shuffle([t].concat(distractors(t)));
+    answersEl.innerHTML = '';
+    opts.forEach(function (o) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'answer';
+      b.textContent = digital(o.hour, o.minute);
+      b.setAttribute('data-ok', o.hour === t.hour && o.minute === t.minute ? '1' : '0');
+      answersEl.appendChild(b);
+    });
+    feedback(readFb, '', '');
+    readNext.hidden = true; readSpeak.hidden = true;
+    goTo(t.hour, t.minute, true);
+  }
+  answersEl.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.answer') : null;
+    if (!b || b.disabled || state.phase !== 'asking') return;
+    if (b.getAttribute('data-ok') === '1') {
+      win(state.attempts === 0);
+      state.phase = 'done';
+      b.classList.add('right');
+      Array.prototype.forEach.call(answersEl.children, function (x) { x.disabled = true; });
+      feedback(readFb, 'ok', praise() + ' Het is ' + timeWords(state.target.hour, state.target.minute) + '.');
+      readNext.hidden = false; readSpeak.hidden = !canSpeak;
+    } else {
+      state.attempts++;
+      b.classList.add('wrong'); b.disabled = true;
+      feedback(readFb, 'bad', 'Nee, probeer het nog eens. De korte wijzer wijst de uren aan, de lange de minuten.');
+    }
+  });
+  readNext.addEventListener('click', newRead);
+
+  /* ---------- modus, niveau en opties ---------- */
+  var HINTS = {
+    explore: 'Pak een wijzer en sleep hem rond.',
+    set: 'Sleep de wijzers naar de goede tijd.',
+    read: 'Kijk goed naar de korte en de lange wijzer.',
+    calc: 'De klok helpt je bij het rekenen.'
+  };
+  var tabs = document.querySelectorAll('.tab');
+  var panels = { explore: 'panel-explore', set: 'panel-set', read: 'panel-read', calc: 'panel-calc' };
+  var levelsEl = document.getElementById('levels');
+  var snapWrap = document.getElementById('optSnapWrap');
+  var hint = document.getElementById('hint');
+
+  function setMode(mode) {
+    state.mode = mode;
+    endDrag();
+    if (canSpeak) { try { window.speechSynthesis.cancel(); } catch (err) {} }
+    Array.prototype.forEach.call(tabs, function (t) {
+      t.setAttribute('aria-selected', t.getAttribute('data-mode') === mode ? 'true' : 'false');
+    });
+    Object.keys(panels).forEach(function (k) { document.getElementById(panels[k]).hidden = k !== mode; });
+    levelsEl.hidden = mode === 'explore' || mode === 'calc';
+    snapWrap.hidden = mode !== 'explore';
+    hint.textContent = HINTS[mode];
+    svg.classList.toggle('locked', mode === 'read' || mode === 'calc');
+    if (mode === 'explore') {
+      svg.setAttribute('tabindex', '0');
+      afterMove();
+    } else {
+      svg.setAttribute('aria-label', 'Klok met wijzers');
+      if (mode === 'set') newSet(); else if (mode === 'read') newRead(); else newCalc();
+    }
+    syncWedge();
+  }
+  Array.prototype.forEach.call(tabs, function (t) {
+    t.addEventListener('click', function () { setMode(t.getAttribute('data-mode')); });
+  });
+
+  document.getElementById('chips').addEventListener('click', function (e) {
+    var c = e.target.closest ? e.target.closest('.chip') : null;
+    if (!c) return;
+    state.level = c.getAttribute('data-level');
+    Array.prototype.forEach.call(document.querySelectorAll('#chips .chip'), function (x) {
+      x.setAttribute('aria-pressed', x === c ? 'true' : 'false');
+    });
+    if (state.mode === 'set') newSet();
+    else if (state.mode === 'read') newRead();
+  });
+
+  document.getElementById('optMin').addEventListener('change', function (e) {
+    svg.classList.toggle('hide-min', !e.target.checked);
+  });
+  document.getElementById('optSnap').addEventListener('change', function (e) {
+    state.snap = e.target.checked;
+    if (state.snap) {
+      var tot = mod(Math.round((state.hour * 60 + state.minute) / 5) * 5, 720);
+      goTo(Math.floor(tot / 60), tot % 60, false);
+    }
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.speak'), function (b) {
+    if (!canSpeak) b.hidden = true;
+    b.addEventListener('click', speakCurrent);
+  });
+
+  /* ---------- ochtend / middag ---------- */
+  amBtn.addEventListener('click', function () { state.pm = false; updateExplore(); });
+  pmBtn.addEventListener('click', function () { state.pm = true; updateExplore(); });
+
+  /* ---------- Rekenen ---------- */
+  var calcTypes = document.getElementById('calcTypes');
+  var calcLabel = document.getElementById('calcLabel'), calcQ = document.getElementById('calcQ');
+  var calcAnswers = document.getElementById('calcAnswers'), calcFb = document.getElementById('calcFb');
+  var calcNext = document.getElementById('calcNext');
+  var minBlock = document.getElementById('minBlock');
+  var optWedge = document.getElementById('optWedge'), optWedgeWrap = document.getElementById('optWedgeWrap');
+  var calc = { type: 'h24', phase: 'asking', attempts: 0, q: null };
+
+  function rand(n) { return Math.floor(Math.random() * n); }
+  function pick(pool, n) { return shuffle(pool.slice()).slice(0, n); }
+  function uniq(arr, bad, lo, hi) {
+    var seen = {}, out = [];
+    arr.forEach(function (x) { if (x >= lo && x <= hi && x !== bad && !seen[x]) { seen[x] = 1; out.push(x); } });
+    return out;
+  }
+  function syncWedge() {
+    var on = optWedge.checked && (state.mode === 'explore' || (state.mode === 'calc' && calc.type === 'min'));
+    svg.classList.toggle('show-wedge', on);
+    minBlock.hidden = !optWedge.checked;
+    optWedgeWrap.hidden = !(state.mode === 'explore' || state.mode === 'calc');
+  }
+  optWedge.addEventListener('change', syncWedge);
+
+  function newCalc() {
+    calc.phase = 'asking'; calc.attempts = 0;
+    calcNext.hidden = true; feedback(calcFb, '', '');
+    var q = {}, opts = [], wrong;
+    if (calc.type === 'h24') {
+      q.m = [0, 15, 30, 45][rand(4)];
+      q.pm = Math.random() < 0.75;
+      q.h12 = 1 + rand(11);
+      q.h24 = q.pm ? q.h12 + 12 : q.h12;
+      q.dir = Math.random() < 0.5 ? 'to12' : 'to24';
+      if (q.dir === 'to12') {
+        calcLabel.textContent = 'Hoe laat is dit op de gewone klok?';
+        calcQ.textContent = fmt24(q.h24, q.m);
+        wrong = pick(uniq([q.h12 + 1, q.h12 - 1, q.h12 + 2, q.h12 - 2, 24 - q.h24], q.h12, 1, 12), 2);
+        opts = [{ t: digital(q.h12, q.m), ok: true }].concat(wrong.map(function (x) { return { t: digital(x, q.m), ok: false }; }));
+        goTo(0, q.m, true);
+      } else {
+        calcLabel.textContent = 'Hoe schrijf je dit op de 24-uurs klok?';
+        calcQ.textContent = digital(q.h12, q.m) + (q.pm ? " 's middags" : " 's ochtends");
+        var first = q.pm ? q.h12 : q.h12 + 12;
+        var rest = uniq([q.h24 + 1, q.h24 - 1, q.h24 + 2, q.h24 - 2], q.h24, 0, 23).filter(function (x) { return x !== first; });
+        wrong = [first].concat(pick(rest, 1));
+        opts = [{ t: fmt24(q.h24, q.m), ok: true }].concat(wrong.map(function (x) { return { t: fmt24(x, q.m), ok: false }; }));
+        goTo(q.h12, q.m, true);
+      }
+    } else {
+      q.m = 5 * (1 + rand(11));
+      q.h = rand(12);
+      q.next = (q.h === 0 ? 12 : q.h) % 12 + 1;
+      q.left = 60 - q.m;
+      calcLabel.textContent = 'Hoeveel minuten is het nog tot ' + q.next + ' uur?';
+      calcQ.textContent = digital(q.h, q.m);
+      var pool = uniq([q.m, q.left + 5, q.left - 5, q.left + 10, q.left - 10], q.left, 5, 55);
+      wrong = [];
+      if (pool.indexOf(q.m) >= 0) wrong.push(q.m);
+      wrong = wrong.concat(pick(pool.filter(function (x) { return x !== q.m; }), 2 - wrong.length));
+      opts = [{ t: q.left + ' min', ok: true }].concat(wrong.map(function (x) { return { t: x + ' min', ok: false }; }));
+      goTo(q.h, q.m, true);
+    }
+    shuffle(opts);
+    calcAnswers.innerHTML = '';
+    opts.forEach(function (o) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'answer'; b.textContent = o.t;
+      b.setAttribute('data-ok', o.ok ? '1' : '0');
+      calcAnswers.appendChild(b);
+    });
+    calc.q = q;
+    syncWedge();
+  }
+
+  calcAnswers.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.answer') : null;
+    if (!b || b.disabled || calc.phase !== 'asking') return;
+    var q = calc.q, msg;
+    if (b.getAttribute('data-ok') === '1') {
+      win(calc.attempts === 0);
+      calc.phase = 'done'; b.classList.add('right');
+      Array.prototype.forEach.call(calcAnswers.children, function (x) { x.disabled = true; });
+      if (calc.type === 'min') {
+        msg = q.m + ' + ' + q.left + ' = 60. Nog ' + q.left + ' minuten tot ' + q.next + ' uur.';
+      } else if (q.dir === 'to12') {
+        msg = q.pm ? q.h24 + ' − 12 = ' + q.h12 + '. Dus het is ' + digital(q.h12, q.m) + " 's middags."
+                   : "'s Ochtends blijft het uur hetzelfde: " + digital(q.h12, q.m) + '.';
+        goTo(q.h12, q.m, true);
+      } else {
+        msg = q.pm ? q.h12 + ' + 12 = ' + q.h24 + '. Op de 24-uurs klok is het ' + fmt24(q.h24, q.m) + '.'
+                   : "'s Ochtends blijft het uur hetzelfde: " + fmt24(q.h24, q.m) + '.';
+      }
+      feedback(calcFb, 'ok', praise() + ' ' + msg);
+      calcNext.hidden = false;
+    } else {
+      calc.attempts++;
+      b.classList.add('wrong'); b.disabled = true;
+      if (calc.type === 'min') msg = 'Nee. Een uur is 60 minuten. Er zijn al ' + q.m + ' minuten voorbij. Wat moet erbij om 60 te maken?';
+      else if (!q.pm) msg = "Nog niet. 's Ochtends blijft het uur hetzelfde.";
+      else if (q.dir === 'to12') msg = 'Nog niet. Na 12 uur tel je door: 13 is 1 uur, 14 is 2 uur. Trek 12 af.';
+      else msg = 'Nog niet. Na 12 uur tel je door: 1 uur wordt 13. Tel er 12 bij op.';
+      feedback(calcFb, 'bad', msg);
+    }
+  });
+  calcNext.addEventListener('click', newCalc);
+  calcTypes.addEventListener('click', function (e) {
+    var c = e.target.closest ? e.target.closest('.chip') : null;
+    if (!c) return;
+    calc.type = c.getAttribute('data-calc');
+    Array.prototype.forEach.call(calcTypes.querySelectorAll('.chip'), function (x) {
+      x.setAttribute('aria-pressed', x === c ? 'true' : 'false');
+    });
+    newCalc();
+  });
+
+  /* ---------- start ---------- */
+  render();
+  setMode('explore');
+})();
+</script>
+</body>
+</html>
